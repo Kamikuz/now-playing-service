@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @Slf4j
@@ -47,6 +48,7 @@ public class NowPlayingService {
     private static final int CSHARP_PROGRESS_NONE = -1;
     private static final int CSHARP_PROGRESS_RESET = -2;
     private int prevCSharpProgressSeconds = CSHARP_PROGRESS_RESET;
+    private String currentLilithPlaybackId;
 
     private final Map<String, String> otherPlatforms = new HashMap<>();
 
@@ -79,6 +81,10 @@ public class NowPlayingService {
     @EventListener
     public void updateMusicInfo(MusicStatusUpdatedEvent event) {
         SettingsGeneral settings = settingsService.getSettingsGeneral();
+
+        if ("lilith".equals(settings.getPlatform())) {
+            return;
+        }
 
         // 获取音乐状态
         String status = audioService.getStatus();
@@ -237,7 +243,8 @@ public class NowPlayingService {
         int duration = track.getDuration();
 
         // 如果 C# 端提供了歌曲总时长，则使用 C# 端的值
-        if (audioService.getTotalSeconds() > 0) {
+        if (!"lilith".equals(settingsService.getSettingsGeneral().getPlatform())
+                && audioService.getTotalSeconds() > 0) {
             duration = audioService.getTotalSeconds();
         }
 
@@ -294,6 +301,8 @@ public class NowPlayingService {
         // 清空歌曲状态
         player = new Player();
         track = new Track();
+        timer.reset();
+        currentLilithPlaybackId = null;
         prevWindowTitle = "";
         prevCSharpProgressSeconds = CSHARP_PROGRESS_RESET;
     }
@@ -320,6 +329,74 @@ public class NowPlayingService {
         otherPlatforms.put("cider", "Cider");
         otherPlatforms.put("browser", "浏览器");
         otherPlatforms.put("salt", "Salt Player");
+        otherPlatforms.put("lilith", "Lilith 点歌机");
+    }
+
+    public synchronized void updateLilithTrack(String playbackId, String title, String artist) {
+        if (!isLilithPlatform() || Objects.equals(currentLilithPlaybackId, playbackId)) {
+            return;
+        }
+
+        currentLilithPlaybackId = playbackId;
+        timer.reset();
+        timer.start();
+        player.setHasSong(true);
+        player.setIsPaused(false);
+
+        try {
+            Track searchedTrack = neteaseMusicService.search(title + " " + artist);
+            track = copyTrack(searchedTrack);
+            if (track == null) track = new Track();
+        } catch (Exception e) {
+            log.error("获取 Lilith 当前歌曲信息失败: {}", e.getMessage());
+            track = Track.builder()
+                    .album("")
+                    .cover("https://gitee.com/widdit/now-playing/raw/master/spotify_no_cover.jpg")
+                    .duration(5 * 60)
+                    .durationHuman("5:00")
+                    .url("")
+                    .build();
+        }
+
+        track.setTitle(title);
+        track.setAuthor(artist);
+        eventPublisher.publishEvent(new TrackChangedEvent(this, "Lilith 歌曲发生改变"));
+        eventPublisher.publishEvent(new PlayerPauseStateChangedEvent(this, "播放器暂停状态改变"));
+        outputService.outputAsync(track);
+    }
+
+    public synchronized void updateLilithPlayback(boolean playing) {
+        if (!isLilithPlatform() || currentLilithPlaybackId == null || !player.getHasSong()) {
+            return;
+        }
+
+        boolean paused = !playing;
+        if (Objects.equals(player.getIsPaused(), paused)) return;
+        player.setIsPaused(paused);
+        if (paused) {
+            pauseSeekbar();
+        } else {
+            advanceSeekbar();
+        }
+        eventPublisher.publishEvent(new PlayerPauseStateChangedEvent(this, "播放器暂停状态改变"));
+    }
+
+    public synchronized void clearLilithTrack() {
+        if (!isLilithPlatform()) return;
+
+        boolean hadSong = player.getHasSong();
+        currentLilithPlaybackId = null;
+        player = new Player();
+        track = new Track();
+        timer.reset();
+        if (hadSong) {
+            eventPublisher.publishEvent(new TrackChangedEvent(this, "Lilith 当前歌曲已清空"));
+            eventPublisher.publishEvent(new PlayerPauseStateChangedEvent(this, "播放器暂停状态改变"));
+        }
+    }
+
+    private boolean isLilithPlatform() {
+        return "lilith".equals(settingsService.getSettingsGeneral().getPlatform());
     }
 
     /**
