@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "dgSpecHash": "zteV84Ov7Vw=",
+  "success": true,
+  "projectFilePath": "D:\\Developer\\Lilith\\now-playing-service\\external_programs\\AudioService\\CheckMusicProcess\\CheckMusicProcess.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.csharp\\4.7.0\\microsoft.csharp.4.7.0.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\system.commandline\\2.0.0-beta4.22272.1\\system.commandline.2.0.0-beta4.22272.1.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\system.commandline.dragonfruit\\0.4.0-alpha.22272.1\\system.commandline.dragonfruit.0.4.0-alpha.22272.1.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\system.commandline.namingconventionbinder\\2.0.0-beta4.22272.1\\system.commandline.namingconventionbinder.2.0.0-beta4.22272.1.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\system.commandline.rendering\\0.4.0-alpha.22272.1\\system.commandline.rendering.0.4.0-alpha.22272.1.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.30\\microsoft.netcore.app.ref.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.netcore.app.runtime.win-x64\\8.0.30\\microsoft.netcore.app.runtime.win-x64.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.30\\microsoft.windowsdesktop.app.ref.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.windowsdesktop.app.runtime.win-x64\\8.0.30\\microsoft.windowsdesktop.app.runtime.win-x64.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.30\\microsoft.aspnetcore.app.ref.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.aspnetcore.app.runtime.win-x64\\8.0.30\\microsoft.aspnetcore.app.runtime.win-x64.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.netcore.app.host.win-x64\\8.0.30\\microsoft.netcore.app.host.win-x64.8.0.30.nupkg.sha512",
+    "C:\\Users\\KAMIKU\\.nuget\\packages\\microsoft.windows.sdk.net.ref\\10.0.26100.57\\microsoft.windows.sdk.net.ref.10.0.26100.57.nupkg.sha512"
+  ],
+  "logs": []
+}

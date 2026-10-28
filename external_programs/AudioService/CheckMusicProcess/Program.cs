@@ -42,7 +42,11 @@ namespace ProcessChecker
             if (PlatformProcessMap.TryGetValue(platform, out string targetProcessNames))
             {
                 bool isRunning = targetProcessNames.Split('|')
-                    .Any(name => Process.GetProcessesByName(name).Length > 0);
+                    .Any(name => {
+                        var processes = Process.GetProcessesByName(name);
+                        try { return processes.Length > 0; }
+                        finally { foreach (var process in processes) process.Dispose(); }
+                    });
 
                 Console.WriteLine(isRunning ? "true" : "false");
             }

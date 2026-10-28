@@ -141,14 +141,19 @@ public class LilithWebSocketClient {
                         return;
                     }
                     nowPlayingService.updateLilithTrack(
-                            message.getId(), message.getTitle(), message.getArtist());
+                            message.getId(), message.getTitle(), message.getArtist(),
+                            message.getLrc(), message.getTrans(), message.getDuration(), message.getElapsed());
                     break;
                 case "playback":
                     if (message.getPlaying() == null) {
                         log.warn("忽略字段不完整的 Lilith playback 消息");
                         return;
                     }
+                    nowPlayingService.updateLilithProgress(null, message.getElapsed());
                     nowPlayingService.updateLilithPlayback(message.getPlaying());
+                    break;
+                case "progress":
+                    nowPlayingService.updateLilithProgress(message.getId(), message.getElapsed());
                     break;
                 case "clear":
                     nowPlayingService.clearLilithTrack();

@@ -17,6 +17,11 @@ public class SodaMusicSMTC : MusicService
         mediaManager.OnAnySessionOpened += MediaManager_OnAnySessionOpened;
         mediaManager.OnAnySessionClosed += MediaManager_OnAnySessionClosed;
 
+        OwnCleanup(() => {
+            mediaManager.OnAnySessionOpened -= MediaManager_OnAnySessionOpened;
+            mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
+            mediaManager.Dispose();
+        });
         mediaManager.Start();
     }
 
@@ -115,36 +120,33 @@ public class SodaMusicSMTC : MusicService
         AudioSessionEnumerator sessionEnumerator = sessionManager.GetSessionEnumerator();
 
         // 遍历所有会话，寻找匹配的进程
-        foreach (AudioSessionControl session in sessionEnumerator)
+        foreach (var ownedSession in OwnedAudioSessions.Enumerate(sessionEnumerator))
         {
+            var session = ownedSession.Session;
             if (session == null)
             {
                 continue;
             }
 
-            AudioSessionControl2 sessionControl = session.QueryInterface<AudioSessionControl2>();
-            if (sessionControl == null || sessionControl.Process == null)
+            AudioSessionControl2 sessionControl = ownedSession.Own(session.QueryInterface<AudioSessionControl2>());
+            if (sessionControl == null || ownedSession.GetProcess(sessionControl) == null)
             {
                 continue;
             }
 
-            string processName = sessionControl.Process.ProcessName;
+            string processName = ownedSession.GetProcess(sessionControl).ProcessName;
             AudioMeterInformation meter = null;
 
             if (processName.StartsWith("SodaMusic"))
             {
-                meter = session.QueryInterface<AudioMeterInformation>();
+                meter = ownedSession.Own(session.QueryInterface<AudioMeterInformation>());
                 volume = meter.PeakValue;
                 break;
             }
 
             // 释放对象
-            meter?.Dispose();
-            sessionControl?.Dispose();
-            session.Dispose();
         }
 
-        sessionEnumerator?.Dispose();
 
         return volume;
     }

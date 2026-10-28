@@ -14,7 +14,7 @@ public class BQLivePlayerService : MusicService
 
     public override void Init()
     {
-        FetchMusicStatus();
+        StartWorker(FetchMusicStatus);
     }
 
     public override string GetMusicStatus(AudioSessionManager2 sessionManager)
@@ -31,14 +31,15 @@ public class BQLivePlayerService : MusicService
 
     private async Task FetchMusicStatus()
     {
-        while (true)
+        while (!StopToken.IsCancellationRequested)
         {
             try
             {
-                using (HttpClient client = new HttpClient())
+                using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
                 {
                     // 发送 GET 请求
-                    HttpResponseMessage response = client.GetAsync("http://127.0.0.1:62233/api/playinfo").GetAwaiter().GetResult();
+                    using (HttpResponseMessage response = await client.GetAsync("http://127.0.0.1:62233/api/playinfo", StopToken))
+                    {
                     response.EnsureSuccessStatusCode();
 
                     // 读取响应内容
@@ -65,6 +66,7 @@ public class BQLivePlayerService : MusicService
                         prevCoverUrl = coverUrl;
                         SaveThumbnail(coverUrl);
                     }
+                    }
                 }
             }
             catch (Exception) {
@@ -74,7 +76,7 @@ public class BQLivePlayerService : MusicService
             }
 
             // 间隔 200 ms
-            await Task.Delay(200);
+            await Task.Delay(200, StopToken);
         }
     }
 
@@ -97,7 +99,7 @@ public class BQLivePlayerService : MusicService
         
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 请求图片并获取其内容
                 byte[] thumbnailBytes = client.GetByteArrayAsync(coverUrl).GetAwaiter().GetResult();

@@ -19,30 +19,31 @@ public class SpotifyMusicService : MusicService
             sessionEnumerator = sessionManager.GetSessionEnumerator();
 
             // 遍历所有会话，寻找匹配的进程
-            foreach (AudioSessionControl session in sessionEnumerator)
+            foreach (var ownedSession in OwnedAudioSessions.Enumerate(sessionEnumerator))
             {
+                var session = ownedSession.Session;
                 if (session == null)
                 {
                     continue;
                 }
 
-                AudioSessionControl2 sessionControl = session.QueryInterface<AudioSessionControl2>();
-                if (sessionControl == null || sessionControl.Process == null)
+                AudioSessionControl2 sessionControl = ownedSession.Own(session.QueryInterface<AudioSessionControl2>());
+                if (sessionControl == null || ownedSession.GetProcess(sessionControl) == null)
                 {
                     continue;
                 }
 
-                string processName = sessionControl.Process.ProcessName;
+                string processName = ownedSession.GetProcess(sessionControl).ProcessName;
                 AudioMeterInformation meter = null;
 
                 if (processName.StartsWith("Spotify"))
                 {
                     // Spotify 部分情况下会存在多个进程，因此不能 break，并且需要累加音量
                     musicAppRunning = true;
-                    meter = session.QueryInterface<AudioMeterInformation>();
+                    meter = ownedSession.Own(session.QueryInterface<AudioMeterInformation>());
                     volume += meter.PeakValue;
 
-                    string mainWindowTitle = WindowDetector.GetWindowTitleByHandle(sessionControl.Process.MainWindowHandle);
+                    string mainWindowTitle = WindowDetector.GetWindowTitleByHandle(ownedSession.GetProcess(sessionControl).MainWindowHandle);
                     if (mainWindowTitle.Contains('-'))
                     {
                         windowTitle = FixTitleSpotify(mainWindowTitle);
@@ -50,9 +51,6 @@ public class SpotifyMusicService : MusicService
                 }
 
                 // 释放对象
-                meter?.Dispose();
-                sessionControl?.Dispose();
-                session.Dispose();
             }
         }
         catch (Exception)
@@ -62,7 +60,6 @@ public class SpotifyMusicService : MusicService
         finally
         {
             // 释放对象
-            sessionEnumerator?.Dispose();
         }
 
         // 未检测到音乐软件进程

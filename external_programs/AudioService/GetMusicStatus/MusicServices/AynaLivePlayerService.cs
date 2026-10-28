@@ -17,7 +17,7 @@ public class AynaLivePlayerService : MusicService
 
     public override void Init()
     {
-        FetchMusicStatus();
+        StartWorker(FetchMusicStatus);
     }
 
     public override string GetMusicStatus(AudioSessionManager2 sessionManager)
@@ -36,14 +36,14 @@ public class AynaLivePlayerService : MusicService
     {
         Uri serverUri = new Uri("ws://localhost:29629/wsinfo");
 
-        while (true)
+        while (!StopToken.IsCancellationRequested)
         {
             using (ClientWebSocket clientWebSocket = new ClientWebSocket())
             {
                 try
                 {
                     // 连接 WebSocket 服务器
-                    await clientWebSocket.ConnectAsync(serverUri, CancellationToken.None);
+                    await clientWebSocket.ConnectAsync(serverUri, StopToken);
 
                     webSocketConnected = true;
 
@@ -60,7 +60,7 @@ public class AynaLivePlayerService : MusicService
             paused = true;
 
             // 等待 1 秒后重试
-            await Task.Delay(1000);
+            await Task.Delay(1000, StopToken);
         }
     }
 
@@ -76,8 +76,10 @@ public class AynaLivePlayerService : MusicService
         {
             try
             {
-                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), StopToken);
                 
+                if (messageBuilder.Length + result.Count > 1024 * 1024)
+                    throw new System.IO.InvalidDataException("Music socket frame exceeds budget");
                 messageBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
 
                 // 如果是完整的消息，则进行处理
@@ -176,7 +178,7 @@ public class AynaLivePlayerService : MusicService
         
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 请求图片并获取其内容
                 byte[] thumbnailBytes = client.GetByteArrayAsync(coverUrl).GetAwaiter().GetResult();

@@ -10,4 +10,8 @@ public class LilithMessage {
     private String title;
     private String artist;
     private Boolean playing;
+    private String lrc;
+    private String trans;
+    private Double duration;
+    private Double elapsed;
 }

@@ -21,7 +21,7 @@ public class MieboService : MusicService
 
     public override void Init()
     {
-        Main();
+        StartWorker(Main);
     }
 
     public override string GetMusicStatus(AudioSessionManager2 sessionManager)
@@ -38,7 +38,7 @@ public class MieboService : MusicService
 
     private async Task Main()
     {
-        while (true)
+        while (!StopToken.IsCancellationRequested)
         {
             // 找到咩播进程正在监听的网络端口
             await FindPort();
@@ -47,17 +47,18 @@ public class MieboService : MusicService
             await FetchMusicStatus();
 
             // 等待 3 秒后重试
-            await Task.Delay(3000);
+            await Task.Delay(3000, StopToken);
         }
     }
 
     private async Task FindPort()
     {
-        while (true)
+        while (!StopToken.IsCancellationRequested)
         {
-            var processes = Process.GetProcessesByName("咩播").ToList();
-
-            if (processes.Any())
+            var processes = Process.GetProcessesByName("咩播");
+            var hasProcess = processes.Length > 0;
+            foreach (var process in processes) OwnedAudioSessions.Release(process);
+            if (hasProcess)
             {
                 string portFound = NetPortFinder.GetPortByProcessName("咩播");
                 if (!string.IsNullOrEmpty(portFound))
@@ -68,7 +69,7 @@ public class MieboService : MusicService
             }
 
             // 等待 3 秒后重试
-            await Task.Delay(3000);
+            await Task.Delay(3000, StopToken);
         }
     }
 
@@ -81,7 +82,7 @@ public class MieboService : MusicService
             try
             {
                 // 连接 WebSocket 服务器
-                await clientWebSocket.ConnectAsync(serverUri, CancellationToken.None);
+                await clientWebSocket.ConnectAsync(serverUri, StopToken);
 
                 webSocketConnected = true;
 
@@ -92,24 +93,19 @@ public class MieboService : MusicService
                 SaveThumbnail(prevCoverUrl);
 
                 // 启动定时器，每 30 秒发送一次心跳消息
-                Timer timer = new Timer(async _ =>
+                using (var heartbeat = new SocketHeartbeat(clientWebSocket, Encoding.UTF8.GetBytes("[\"ping\"]"), StopToken))
                 {
-                    if (clientWebSocket.State == WebSocketState.Open)
-                    {
-                        byte[] buffer = Encoding.UTF8.GetBytes("[\"ping\"]");
-                        await clientWebSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                }, null, 0, 30000);
+
 
                 // 发送 load 消息以获取音乐点播信息
                 byte[] buffer = Encoding.UTF8.GetBytes("[\"load\"]");
-                await clientWebSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
+                await clientWebSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, StopToken);
 
                 // 接收消息
                 await ReceiveMessages(clientWebSocket);
 
                 // 停止定时器
-                timer.Dispose();
+                }
             }
             catch (Exception) {}
         }
@@ -133,8 +129,10 @@ public class MieboService : MusicService
         {
             try
             {
-                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), StopToken);
                 
+                if (messageBuilder.Length + result.Count > 1024 * 1024)
+                    throw new System.IO.InvalidDataException("Music socket frame exceeds budget");
                 messageBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
 
                 // 如果是完整的消息，则进行处理
@@ -221,7 +219,7 @@ public class MieboService : MusicService
         
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 请求图片并获取其内容
                 byte[] thumbnailBytes = client.GetByteArrayAsync(coverUrl).GetAwaiter().GetResult();

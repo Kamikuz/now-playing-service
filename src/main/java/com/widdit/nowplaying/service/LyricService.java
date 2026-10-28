@@ -44,6 +44,15 @@ public class LyricService {
     @Autowired
     private ApplicationEventPublisher eventPublisher;
 
+    @Autowired
+    private SettingsService settingsService;
+    private volatile Lyric lilithLyric;
+
+    public void setLilithLyric(Lyric value) {
+        lilithLyric = value;
+        eventPublisher.publishEvent(new LyricChangedEvent(this, "Lilith 同步歌词更新"));
+    }
+
     // 当前歌曲歌词
     private volatile Lyric lyric = new Lyric();
 
@@ -92,6 +101,7 @@ public class LyricService {
      * @return 歌词对象
      */
     public Lyric getLyric() {
+        if ("lilith".equals(settingsService.getSettingsGeneral().getPlatform()) && lilithLyric != null) return lilithLyric;
         String windowTitle = audioService.getWindowTitle();
         String status = audioService.getStatus();
 
@@ -493,6 +503,7 @@ public class LyricService {
      * 更新歌词对象
      */
     private void updateLyric() {
+        if ("lilith".equals(settingsService.getSettingsGeneral().getPlatform()) && lilithLyric != null) return;
         if (!fetchLyricEnabled) {
             return;
         }

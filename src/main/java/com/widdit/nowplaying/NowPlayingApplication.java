@@ -15,7 +15,9 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 public class NowPlayingApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(NowPlayingApplication.class, args);
+        SpringApplication application = new SpringApplication(NowPlayingApplication.class);
+        application.setHeadless(false);
+        application.run(args);
     }
 
 }

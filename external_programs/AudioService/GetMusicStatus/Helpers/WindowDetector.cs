@@ -58,7 +58,8 @@ public class WindowDetector
             {
                 try
                 {
-                    string procName = Process.GetProcessById((int)processId).ProcessName;
+                    string procName;
+                    using (var process = Process.GetProcessById((int)processId)) procName = process.ProcessName;
                     if (string.Equals(procName, processName, StringComparison.OrdinalIgnoreCase))
                     {
                         found = true;
@@ -82,9 +83,9 @@ public class WindowDetector
     {
         List<string> windowTitles = new List<string>();
         Process[] processes = Process.GetProcessesByName(processName);
-        if (processes.Length == 0) return windowTitles;
-
-        uint targetProcessId = (uint)processes[0].Id;
+        uint targetProcessId;
+        try { if (processes.Length == 0) return windowTitles; targetProcessId = (uint)processes[0].Id; }
+        finally { foreach (var process in processes) OwnedAudioSessions.Release(process); }
 
         EnumWindows(new EnumWindowsProc((hWnd, lParam) =>
         {

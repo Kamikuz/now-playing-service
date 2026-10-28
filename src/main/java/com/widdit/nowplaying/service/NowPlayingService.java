@@ -332,6 +332,35 @@ public class NowPlayingService {
         otherPlatforms.put("lilith", "Lilith 点歌机");
     }
 
+    public synchronized void updateLilithTrack(String id, String title, String artist,
+            String lrc, String trans, Double duration, Double elapsed) {
+        if (!isLilithPlatform()) return;
+        if (lrc == null) { lyricService.setLilithLyric(null); updateLilithTrack(id, title, artist); return; }
+        boolean changed = !Objects.equals(currentLilithPlaybackId, id);
+        currentLilithPlaybackId = id;
+        player.setHasSong(true);
+        if (changed) { timer.reset(); player.setIsPaused(true); }
+        int seconds = duration != null && Double.isFinite(duration) ? (int)Math.max(0, duration) : 0;
+        track = Track.builder().id(id).title(title).author(artist).album("").cover("")
+                .duration(seconds).durationHuman(String.format("%d:%02d", seconds / 60, seconds % 60)).url("").build();
+        Lyric direct = new Lyric();
+        direct.setSource("lilith"); direct.setTitle(title); direct.setAuthor(artist);
+        direct.setDuration(seconds); direct.setLrc(lrc); direct.setHasLyric(!lrc.trim().isEmpty());
+        direct.setTranslatedLyric(trans == null ? "" : trans);
+        direct.setHasTranslatedLyric(trans != null && !trans.trim().isEmpty());
+        lyricService.setLilithLyric(direct);
+        updateLilithProgress(id, elapsed);
+        eventPublisher.publishEvent(new TrackChangedEvent(this, "Lilith 歌曲直接同步"));
+    }
+
+    public synchronized void updateLilithProgress(String id, Double seconds) {
+        if (!isLilithPlatform() || currentLilithPlaybackId == null ||
+                (id != null && !Objects.equals(currentLilithPlaybackId, id)) ||
+                seconds == null || !Double.isFinite(seconds) || seconds < 0) return;
+        timer.setTime((long)(seconds * 1000));
+        eventPublisher.publishEvent(new PlayerProgressSyncEvent(this, "Lilith 精确进度同步"));
+    }
+
     public synchronized void updateLilithTrack(String playbackId, String title, String artist) {
         if (!isLilithPlatform() || Objects.equals(currentLilithPlaybackId, playbackId)) {
             return;
@@ -386,6 +415,7 @@ public class NowPlayingService {
 
         boolean hadSong = player.getHasSong();
         currentLilithPlaybackId = null;
+        lyricService.setLilithLyric(new Lyric());
         player = new Player();
         track = new Track();
         timer.reset();

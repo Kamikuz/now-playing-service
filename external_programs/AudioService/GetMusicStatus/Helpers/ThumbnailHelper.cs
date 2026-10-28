@@ -9,6 +9,7 @@ public static class ThumbnailHelper
 {
     private const string OutputFilePath = "cover_base64.txt";
     private const string LockFilePath = "cover_base64.lock";
+    private static readonly string LockOwner = "lilith-audio-" + Guid.NewGuid().ToString("N");
 
     // SMTC 的标题/歌手信息与封面图片由播放器异步上报，二者并不同步更新。
     // 在切歌时，标题往往先于封面完成更新，如果仅在标题变化的瞬间读取封面，
@@ -25,6 +26,41 @@ public static class ThumbnailHelper
     // 上一次成功保存的封面哈希值，用于判断新获取的封面是否已完成切换。
     private static string lastSavedHash = null;
     private static readonly object hashLock = new object();
+    private static readonly object workerLock = new object();
+    private static Action pending;
+    private static Task worker;
+    private static bool running;
+    private static bool stopped;
+    private static void Schedule(Action action)
+    {
+        lock (workerLock)
+        {
+            if (stopped) return;
+            pending = action; // One latest request, never one Task per track change.
+            if (running) return;
+            running = true;
+            worker = Task.Run(() => {
+                while (true)
+                {
+                    Action next;
+                    lock (workerLock)
+                    {
+                        next = pending; pending = null;
+                        if (next == null || stopped) { running = false; return; }
+                    }
+                    try { next(); } catch (Exception error) { Console.Error.WriteLine("Thumbnail query failed: " + error.GetType().Name); }
+                }
+            });
+        }
+    }
+    public static void Stop()
+    {
+        Task current;
+        lock (workerLock) { stopped = true; pending = null; Interlocked.Increment(ref currentVersion); current = worker; }
+        if (current != null && !current.Wait(1000))
+            Console.Error.WriteLine("Thumbnail worker stop timed out; process exit will release remaining resources.");
+        TryDeleteLockFile();
+    }
 
     /// <summary>
     /// 异步更新封面。
@@ -46,15 +82,14 @@ public static class ThumbnailHelper
 
         long myVersion = Interlocked.Increment(ref currentVersion);
 
-        Task.Run(() =>
+        Schedule(() =>
         {
             bool lockCreated = false;
 
             try
             {
                 // 立即创建锁文件，防止 Java 端在封面确认更新完成之前读到"过渡阶段"的封面
-                TryCreateLockFile();
-                lockCreated = true;
+                lockCreated = TryCreateLockFile();
 
                 string previousHash;
                 lock (hashLock)
@@ -136,6 +171,8 @@ public static class ThumbnailHelper
         {
             thumbnailStream = thumbnail.OpenReadAsync().GetAwaiter().GetResult();
 
+            if (thumbnailStream.Size > 8 * 1024 * 1024)
+                throw new InvalidDataException("Music thumbnail exceeds 8 MiB budget");
             byte[] thumbnailBytes = new byte[thumbnailStream.Size];
             using (DataReader reader = new DataReader(thumbnailStream))
             {
@@ -183,15 +220,17 @@ public static class ThumbnailHelper
         }
     }
 
-    private static void TryCreateLockFile()
+    private static bool TryCreateLockFile()
     {
         try
         {
-            File.WriteAllTextAsync(LockFilePath, "").GetAwaiter().GetResult();
+            File.WriteAllTextAsync(LockFilePath, LockOwner).GetAwaiter().GetResult();
+            return true;
         }
         catch (Exception)
         {
             // ignored
+            return false;
         }
     }
 
@@ -199,7 +238,7 @@ public static class ThumbnailHelper
     {
         try
         {
-            File.Delete(LockFilePath);
+            if (File.Exists(LockFilePath) && File.ReadAllText(LockFilePath) == LockOwner) File.Delete(LockFilePath);
         }
         catch (Exception)
         {
