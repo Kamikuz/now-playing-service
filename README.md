@@ -31,7 +31,7 @@ QQ 交流群：150453391
 | 国内平台 | 网易云音乐、ＱＱ音乐、酷狗音乐、酷我音乐、汽水音乐、全民Ｋ歌        |
 | 国外平台 | Spotify、Apple Music、YouTube Music     |
 | 点歌机 | 咩播、卡西米尔唱片机、花花直播助手、BQ 点歌姬              |
-| 本地播放器 | PotPlayer、Foobar2000、AIMP、Salt Player |
+| 本地播放器 | PotPlayer、Foobar2000、AIMP、Salt Player、SPlayer-Next |
 | 其它 | 浏览器、洛雪音乐、MusicFree、Cider、YesPlayMusic |
 
 ### 检测能力
@@ -143,10 +143,10 @@ QQ 交流群：150453391
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=Widdit%2Fnow-playing-service&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=widdit%2Fnow-playing-service&type=date&releases=&legend=bottom-right">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Widdit/now-playing-service&type=date&theme=dark&legend=top-left&sealed_token=TUrX3i-7CWiGyNULblp68gYKrJqv-2Cm4Om9a7PDqF6jMW1GV_b2B_SrXWi5P6txp7ErwhUfaA8O4sLlZkcKuk08e7sAv4UpUU0iYpACF7wYmPh3g1eZfHH4jCpeXYpkYd76P7zGG4GKYdfoFUK1SdwCtxOUoTQy6g334mkKNmyed11kZei90h7U9AuS" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Widdit/now-playing-service&type=date&legend=top-left&sealed_token=TUrX3i-7CWiGyNULblp68gYKrJqv-2Cm4Om9a7PDqF6jMW1GV_b2B_SrXWi5P6txp7ErwhUfaA8O4sLlZkcKuk08e7sAv4UpUU0iYpACF7wYmPh3g1eZfHH4jCpeXYpkYd76P7zGG4GKYdfoFUK1SdwCtxOUoTQy6g334mkKNmyed11kZei90h7U9AuS" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Widdit/now-playing-service&type=date&legend=top-left&sealed_token=TUrX3i-7CWiGyNULblp68gYKrJqv-2Cm4Om9a7PDqF6jMW1GV_b2B_SrXWi5P6txp7ErwhUfaA8O4sLlZkcKuk08e7sAv4UpUU0iYpACF7wYmPh3g1eZfHH4jCpeXYpkYd76P7zGG4GKYdfoFUK1SdwCtxOUoTQy6g334mkKNmyed11kZei90h7U9AuS" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=widdit/now-playing-service&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=widdit/now-playing-service&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=widdit/now-playing-service&type=date&legend=bottom-right" />
  </picture>
 </a>

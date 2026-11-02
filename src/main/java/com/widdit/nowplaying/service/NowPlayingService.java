@@ -330,6 +330,7 @@ public class NowPlayingService {
         otherPlatforms.put("browser", "浏览器");
         otherPlatforms.put("salt", "Salt Player");
         otherPlatforms.put("lilith", "Lilith 点歌机");
+        otherPlatforms.put("splayer-next", "SPlayer-Next");
     }
 
     public synchronized void updateLilithTrack(String id, String title, String artist,
