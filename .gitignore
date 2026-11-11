@@ -1,6 +1,8 @@
 # Directories
 .idea/
 **/target/
+**/bin/
+**/obj/
 **/test/
 **/setup/
 **/Settings/
