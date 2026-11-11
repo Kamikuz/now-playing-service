@@ -40,6 +40,11 @@ public class SaltPlayerSMTC : MusicService
         mediaManager.OnAnySessionOpened += MediaManager_OnAnySessionOpened;
         mediaManager.OnAnySessionClosed += MediaManager_OnAnySessionClosed;
 
+        OwnCleanup(() => {
+            mediaManager.OnAnySessionOpened -= MediaManager_OnAnySessionOpened;
+            mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
+            mediaManager.Dispose();
+        });
         mediaManager.Start();
         Log("MediaManager started, waiting for SMTC sessions");
     }

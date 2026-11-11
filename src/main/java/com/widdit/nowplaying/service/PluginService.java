@@ -229,6 +229,10 @@ public class PluginService {
      * 启动窗口组件
      */
     private static void runWindowWidget() {
+        if (isEmbedded()) {
+            log.debug("嵌入模式下窗口组件由宿主应用管理");
+            return;
+        }
         // 如果未启用，则结束之前的进程
         // 对于已启用的情况，由于窗口组件程序为单例模式，如果二次运行，会自动重新运行（因此无需结束之前进程）
         WindowWidget windowWidget = settingsPlugin.getWindowWidget();
@@ -253,6 +257,11 @@ public class PluginService {
         } catch (Exception e) {
             log.error("运行 " + exePath + " 失败：" + e.getMessage());
         }
+    }
+
+    private static boolean isEmbedded() {
+        return Boolean.parseBoolean(System.getenv("NPS_EMBEDDED")) ||
+                Boolean.getBoolean("now-playing.embedded");
     }
 
 }

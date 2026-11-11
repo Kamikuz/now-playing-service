@@ -9,6 +9,7 @@ import com.widdit.nowplaying.event.CurrentPlatformChangedEvent;
 import com.widdit.nowplaying.event.MusicStatusUpdatedEvent;
 import com.widdit.nowplaying.event.SettingsGeneralChangedEvent;
 import com.widdit.nowplaying.util.ConsoleUtil;
+import com.widdit.nowplaying.util.TimedAudioCommand;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -48,9 +50,12 @@ public class AudioService {
     // 上一次生效的当前音乐平台，用于判断 currentPlatform 是否发生变化
     private volatile String lastCurrentPlatform;
 
-    private Process getMusicStatusProcess;
+    private volatile Process getMusicStatusProcess;
     private Thread musicStatusReaderThread;
     private Thread processShutdownHook;
+    private final Object frameLock = new Object();
+    private volatile long musicGeneration;
+    private volatile boolean closing;
 
     /**
      * 初始化操作。该方法会在该类实例被 Spring 创建时自动执行
@@ -93,7 +98,9 @@ public class AudioService {
     /**
      * 启动 C# 程序 GetMusicStatus.exe 不断更新音乐状态（成员变量 status 和 windowTitle）
      */
-    public void startGetMusicStatus() {
+    public synchronized void startGetMusicStatus() {
+        if (closing || (getMusicStatusProcess != null && getMusicStatusProcess.isAlive())) return;
+        stopGetMusicStatus();
         // 封装命令行参数
         SettingsGeneral settingsGeneral = settingsService.getSettingsGeneral();
 
@@ -110,12 +117,11 @@ public class AudioService {
         // 运行并处理 C# 程序输出
         try {
             // 启动 C# 程序
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
-            processBuilder.directory(new File("Assets"));  // 指定工作目录为 Assets
-            getMusicStatusProcess = processBuilder.start();
+            getMusicStatusProcess = createMusicStatusProcess(command);
 
             // 为了防止并发问题，在 Hook 内部使用局部变量捕获当前的进程对象
             final Process currentProc = getMusicStatusProcess;
+            final long currentGeneration = musicGeneration;
 
             processShutdownHook = new Thread(() -> {
                 // 这里检查 currentProc 而不是成员变量，确保只处理本次启动的进程
@@ -130,13 +136,15 @@ public class AudioService {
             log.info("启动 C# 进程读取音乐状态");
 
             // 使用线程来异步读取 C# 程序的输出
-            BufferedReader reader = new BufferedReader(new InputStreamReader(getMusicStatusProcess.getInputStream(), StandardCharsets.UTF_8));
+            final BufferedReader reader = new BufferedReader(new InputStreamReader(currentProc.getInputStream(), StandardCharsets.UTF_8));
 
             // 启动一个线程来不断读取 C# 程序的输出
             musicStatusReaderThread = new Thread(() -> {
                 String line;
-                try {
+                try (BufferedReader ownedReader = reader) {
                     while ((line = reader.readLine()) != null) {
+                        synchronized (frameLock) {
+                        if (currentGeneration != musicGeneration || currentProc != getMusicStatusProcess) break;
                         // 更新成员变量
                         if ("Playing".equals(line) || "Paused".equals(line) || "None".equals(line)) {
                             status = line.trim();
@@ -164,24 +172,28 @@ public class AudioService {
                             }
                             windowTitle = newWindowTitle;
                         }
+                        }
 
                         // 发布事件，通知变化（事件监听器中抛出的异常不能中断本读取线程，
                         // 否则 C# 端的后续输出将无人消费，歌曲状态会永久冻结）
                         try {
+                            if (currentGeneration != musicGeneration || currentProc != getMusicStatusProcess) break;
                             eventPublisher.publishEvent(new MusicStatusUpdatedEvent(this, "音乐状态被更新"));
                         } catch (Exception e) {
                             log.warn("发布音乐状态更新事件失败：{}", e.getMessage());
                         }
                     }
                 } catch (Exception e) {
-                    if (getMusicStatusProcess != null && getMusicStatusProcess.isAlive()) {
+                    if (currentGeneration == musicGeneration && currentProc.isAlive()) {
                         log.error("启用线程读取 C# 程序 GetMusicStatus.exe 失败：" + e.getMessage());
                     }
                 }
             });
+            musicStatusReaderThread.setDaemon(true);
             musicStatusReaderThread.start();
 
         } catch (Exception e) {
+            stopGetMusicStatus();
             log.error("启动 C# 程序 GetMusicStatus.exe 失败：" + e.getMessage());
         }
     }
@@ -189,8 +201,22 @@ public class AudioService {
     /**
      * 结束 C# 程序 GetMusicStatus.exe
      */
-    public void stopGetMusicStatus() {
+    protected Process createMusicStatusProcess(List<String> command) throws IOException {
+        return new ProcessBuilder(command).directory(new File("Assets"))
+                .redirectError(ProcessBuilder.Redirect.DISCARD).start();
+    }
+
+    public synchronized void stopGetMusicStatus() {
         log.info("终止 C# 进程读取音乐状态");
+        final Process ownedProcess;
+        final Thread ownedReader;
+        synchronized (frameLock) {
+            musicGeneration++;
+            ownedProcess = getMusicStatusProcess;
+            ownedReader = musicStatusReaderThread;
+            getMusicStatusProcess = null;
+            musicStatusReaderThread = null;
+        }
 
         try {
             // 移除 Shutdown Hook
@@ -205,15 +231,27 @@ public class AudioService {
             }
 
             // 结束 C# 程序（使用 destroyForcibly 确保 Windows 上能杀死进程）
-            if (getMusicStatusProcess != null) {
-                getMusicStatusProcess.destroyForcibly();
+            if (ownedProcess != null) {
+                // stdin EOF requests cooperative C# cleanup first. Only this
+                // captured physical process may be force-stopped after budget.
+                ownedProcess.getOutputStream().close();
+                if (!ownedProcess.waitFor(2500, TimeUnit.MILLISECONDS)) {
+                    ownedProcess.destroyForcibly();
+                    if (!ownedProcess.waitFor(500, TimeUnit.MILLISECONDS)) log.warn("音频子进程退出超时");
+                }
+                ownedProcess.getInputStream().close();
+                ownedProcess.getErrorStream().close();
             }
 
             // 停止读取线程
-            if (musicStatusReaderThread != null) {
-                musicStatusReaderThread.interrupt();
+            if (ownedReader != null && ownedReader != Thread.currentThread()) {
+                ownedReader.interrupt();
+                ownedReader.join(500);
+                if (ownedReader.isAlive()) log.warn("旧音频读取线程退出超时，代际已隔离");
             }
         } catch (Exception e) {
+            if (ownedProcess != null && ownedProcess.isAlive()) ownedProcess.destroyForcibly();
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             log.error("终止 C# 程序 GetMusicStatus.exe 失败：" + e.getMessage());
         }
     }
@@ -223,6 +261,7 @@ public class AudioService {
      */
     @PreDestroy
     public void cleanup() {
+        closing = true;
         stopGetMusicStatus();
     }
 
@@ -249,7 +288,7 @@ public class AudioService {
 
         // 执行 C# 程序 CheckMusicProcess.exe
         try {
-            String stdOut = ConsoleUtil.runGetStdOut("Assets\\AudioService\\CheckMusicProcess.exe", args);
+            String stdOut = TimedAudioCommand.run(ConsoleUtil.getCommand("Assets\\AudioService\\CheckMusicProcess.exe", args));
             boolean newPrimaryPlatformRunning = stdOut.contains("true");
 
             if (newPrimaryPlatformRunning != primaryPlatformRunning) {
@@ -304,7 +343,7 @@ public class AudioService {
         // 执行 C# 程序 GetAudioDevices.exe
         String stdOut = "";
         try {
-            stdOut = ConsoleUtil.runGetStdOut("Assets\\AudioService\\GetAudioDevices.exe");
+            stdOut = TimedAudioCommand.run(ConsoleUtil.getCommand("Assets\\AudioService\\GetAudioDevices.exe", null));
         } catch (Exception e) {
             log.error("获取音频设备列表失败：" + e.getMessage());
         }
@@ -316,8 +355,7 @@ public class AudioService {
         String[] lines = stdOut.split("\n");
         for (String line : lines) {
             String[] split = line.split(" ", 2);
-
-            devices.add(new Device(split[0], split[1]));
+            if (split.length == 2 && !split[0].isEmpty()) devices.add(new Device(split[0], split[1]));
         }
 
         return devices;
@@ -340,7 +378,7 @@ public class AudioService {
         // 执行 C# 程序 DeviceDetect.exe
         String stdOut = "";
         try {
-            stdOut = ConsoleUtil.runGetStdOut("Assets\\AudioService\\DeviceDetect.exe", args);
+            stdOut = TimedAudioCommand.run(ConsoleUtil.getCommand("Assets\\AudioService\\DeviceDetect.exe", args));
         } catch (Exception e) {
             stdOut = "Fail! " + e.getMessage();
         }

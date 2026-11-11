@@ -23,6 +23,9 @@ using System.Threading;
 class Program
 {
     private const int HEARTBEAT_INTERVAL_MS = 1000;
+    private static readonly CancellationTokenSource stopping = new CancellationTokenSource();
+    private static int updatePending;
+    private static int updateDirty;
 
     // 保护 currentSessionManager 的读写锁，避免多线程访问时出现竞态问题
     private static readonly object sessionManagerLock = new object();
@@ -39,6 +42,11 @@ class Program
     static void Main(string deviceId = "default", string platform = "netease", bool smtc = true, int pollInterval = 100, int splayerNextPort = 14558)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        MusicService musicService = null;
+        ConsoleCancelEventHandler cancel = (sender, args) => { args.Cancel = true; stopping.Cancel(); };
+        Console.CancelKeyPress += cancel;
+        try
+        {
 
         // 启动守护线程：当父进程退出（stdin 关闭）时，自动退出本进程
         var parentWatchThread = new Thread(() =>
@@ -49,7 +57,7 @@ class Program
                 while (Console.In.Read() != -1) { }
             }
             catch { }
-            Environment.Exit(0);
+            stopping.Cancel();
         });
         parentWatchThread.IsBackground = true;
         parentWatchThread.Start();
@@ -105,7 +113,6 @@ class Program
             { "splayer-next", (smtc) => new SPlayerNextService(splayerNextPort) }
         };
 
-        MusicService musicService;
         if (musicServiceMap.TryGetValue(platform, out var createService))
         {
             musicService = createService(smtc);
@@ -122,14 +129,23 @@ class Program
 
         Stopwatch globalTimer = Stopwatch.StartNew();
         long lastHeartbeatTime = 0; // 记录上次心跳的时间点
-        
+        long lastQueryError = -10000;
         // 不断轮询音乐状态
-        while (true)
+        while (!stopping.IsCancellationRequested)
         {
             string currentOutput;
             lock (sessionManagerLock)
             {
-                currentOutput = musicService.GetMusicStatus(currentSessionManager);
+                try { currentOutput = musicService.GetMusicStatus(currentSessionManager); }
+                catch (Exception error)
+                {
+                    currentOutput = "None";
+                    if (globalTimer.ElapsedMilliseconds - lastQueryError >= 10000)
+                    {
+                        lastQueryError = globalTimer.ElapsedMilliseconds;
+                        Console.Error.WriteLine("Music status query failed: " + error.GetType().Name);
+                    }
+                }
             }
 
             // 判断状态是否改变
@@ -151,7 +167,25 @@ class Program
                 }
             }
 
-            Thread.Sleep(pollInterval);
+            if (stopping.Token.WaitHandle.WaitOne(Math.Max(100, Math.Min(1000, pollInterval)))) break;
+        }
+        }
+        finally
+        {
+            stopping.Cancel();
+            Console.CancelKeyPress -= cancel;
+            if (notificationClient != null)
+            {
+                notificationClient.DefaultDeviceChanged -= OnDefaultDeviceChanged;
+                OwnedAudioSessions.Release(notificationClient);
+                notificationClient = null;
+            }
+            OwnedAudioSessions.Release(notificationDeviceEnumerator);
+            notificationDeviceEnumerator = null;
+            musicService?.Dispose();
+            NeteaseMusicHelper.Stop();
+            ThumbnailHelper.Stop();
+            lock (sessionManagerLock) { OwnedAudioSessions.Release(currentSessionManager); currentSessionManager = null; }
         }
     }
 
@@ -168,7 +202,9 @@ class Program
             return;
         }
 
-        ThreadPool.QueueUserWorkItem(_ => UpdateDefaultSessionManager());
+        Interlocked.Exchange(ref updateDirty, 1);
+        if (!stopping.IsCancellationRequested && Interlocked.CompareExchange(ref updatePending, 1, 0) == 0)
+            ThreadPool.QueueUserWorkItem(_ => UpdateDefaultSessionManager());
     }
 
     /*
@@ -177,20 +213,33 @@ class Program
     */
     static void UpdateDefaultSessionManager()
     {
+        AudioSessionManager2 replacement = null;
         try
         {
-            var newSessionManager = GetDefaultAudioSessionManager2(DataFlow.Render);
+            if (stopping.IsCancellationRequested) return;
+            Interlocked.Exchange(ref updateDirty, 0);
+            replacement = GetDefaultAudioSessionManager2(DataFlow.Render);
 
             lock (sessionManagerLock)
             {
+                if (stopping.IsCancellationRequested) return;
                 var oldSessionManager = currentSessionManager;
-                currentSessionManager = newSessionManager;
-                oldSessionManager?.Dispose();
+                currentSessionManager = replacement;
+                replacement = null;
+                OwnedAudioSessions.Release(oldSessionManager);
             }
         }
         catch (Exception)
         {
             // 获取新的默认音频设备失败，忽略此次变化，继续使用原有的会话管理器
+        }
+        finally
+        {
+            OwnedAudioSessions.Release(replacement);
+            Interlocked.Exchange(ref updatePending, 0);
+            if (!stopping.IsCancellationRequested && Volatile.Read(ref updateDirty) != 0 &&
+                Interlocked.CompareExchange(ref updatePending, 1, 0) == 0)
+                ThreadPool.QueueUserWorkItem(_ => UpdateDefaultSessionManager());
         }
     }
 

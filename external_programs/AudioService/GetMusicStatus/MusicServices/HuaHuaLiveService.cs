@@ -18,7 +18,7 @@ public class HuaHuaLiveService : MusicService
 
     public override void Init()
     {
-        FetchMusicStatus();
+        StartWorker(FetchMusicStatus);
     }
 
     public override string GetMusicStatus(AudioSessionManager2 sessionManager)
@@ -39,7 +39,7 @@ public class HuaHuaLiveService : MusicService
     {
         Uri serverUri = new Uri("ws://127.0.0.1:9780/openapi/music/list/ws");
 
-        while (true)
+        while (!StopToken.IsCancellationRequested)
         {
             // 连接前需调用一次 HTTP 接口来获得初始歌曲信息（因为该软件的 WebSocket 仅在歌单变化时发送消息）
             UpdateSongInfo();
@@ -49,26 +49,20 @@ public class HuaHuaLiveService : MusicService
                 try
                 {
                     // 连接 WebSocket 服务器
-                    await clientWebSocket.ConnectAsync(serverUri, CancellationToken.None);
+                    await clientWebSocket.ConnectAsync(serverUri, StopToken);
 
                     webSocketConnected = true;
 
                     // 启动定时器，每 30 秒发送一次心跳消息
-                    Timer timer = new Timer(async _ =>
-                    {
-                        if (clientWebSocket.State == WebSocketState.Open)
-                        {
-                            string heartBeatMessage = "HeartBeat";
-                            byte[] buffer = Encoding.UTF8.GetBytes(heartBeatMessage);
-                            await clientWebSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
-                        }
-                    }, null, 0, 30000);
+                    using (var heartbeat = new SocketHeartbeat(clientWebSocket, Encoding.UTF8.GetBytes("HeartBeat"), StopToken))
+                {
+
 
                     // 接收消息
                     await ReceiveMessages(clientWebSocket);
 
                     // 停止定时器
-                    timer.Dispose();
+                    }
                 }
                 catch (Exception) {}
             }
@@ -80,7 +74,7 @@ public class HuaHuaLiveService : MusicService
             paused = true;
 
             // 等待 1 秒后重试
-            await Task.Delay(1000);
+            await Task.Delay(1000, StopToken);
         }
     }
 
@@ -96,8 +90,10 @@ public class HuaHuaLiveService : MusicService
         {
             try
             {
-                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                WebSocketReceiveResult result = await clientWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), StopToken);
                 
+                if (messageBuilder.Length + result.Count > 1024 * 1024)
+                    throw new System.IO.InvalidDataException("Music socket frame exceeds budget");
                 messageBuilder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
 
                 // 如果是完整的消息，则进行处理
@@ -157,7 +153,7 @@ public class HuaHuaLiveService : MusicService
     {
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 发送 GET 请求
                 HttpResponseMessage response = client.GetAsync("http://127.0.0.1:9780/openapi/music/play/status").GetAwaiter().GetResult();
@@ -181,7 +177,7 @@ public class HuaHuaLiveService : MusicService
     {
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 发送 GET 请求
                 HttpResponseMessage response = client.GetAsync("http://127.0.0.1:9780/openapi/music/play/list").GetAwaiter().GetResult();
@@ -229,7 +225,7 @@ public class HuaHuaLiveService : MusicService
         
         try
         {
-            using (HttpClient client = new HttpClient())
+            using (HttpClient client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) })
             {
                 // 请求图片并获取其内容
                 byte[] thumbnailBytes = client.GetByteArrayAsync(coverUrl).GetAwaiter().GetResult();

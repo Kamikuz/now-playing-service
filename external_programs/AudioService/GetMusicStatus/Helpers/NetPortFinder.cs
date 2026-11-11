@@ -24,10 +24,8 @@ public static class NetPortFinder
         // 获取目标进程的 PID 列表
         var processes = Process.GetProcessesByName(processName);
         HashSet<int> targetPids = new HashSet<int>();
-        foreach (var proc in processes)
-        {
-            targetPids.Add(proc.Id);
-        }
+        try { foreach (var proc in processes) targetPids.Add(proc.Id); }
+        finally { foreach (var proc in processes) OwnedAudioSessions.Release(proc); }
 
         // 获取所有 TCP 监听连接
         foreach (var row in GetAllTcpConnections())

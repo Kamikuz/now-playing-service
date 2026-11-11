@@ -22,6 +22,15 @@ public static class NeteaseMusicHelper
     private static readonly object StateLock = new object();
     private static readonly AutoResetEvent WorkSignal = new AutoResetEvent(false);
     private static Thread _workerThread;
+    private static bool _stopping;
+    public static void Stop()
+    {
+        Thread worker;
+        lock (StateLock) { _stopping = true; _requestedTrack = null; _requestedGeneration++; worker = _workerThread; }
+        WorkSignal.Set();
+        if (worker != null && worker != Thread.CurrentThread && !worker.Join(1000))
+            Console.Error.WriteLine("UIA worker stop timed out; process exit will release remaining resources.");
+    }
     private static string _requestedTrack;
     private static long _requestedGeneration;
     private static long _resultGeneration = -1;
@@ -37,6 +46,7 @@ public static class NeteaseMusicHelper
     {
         lock (StateLock)
         {
+            if (_stopping) return;
             if (string.Equals(_requestedTrack, track, StringComparison.Ordinal))
             {
                 return;
@@ -114,6 +124,7 @@ public static class NeteaseMusicHelper
                 long generation;
                 lock (StateLock)
                 {
+                    if (_stopping) break;
                     track = _requestedTrack;
                     generation = _requestedGeneration;
                 }
@@ -306,10 +317,11 @@ public static class NeteaseMusicHelper
         IUIAutomationElement desktop = null;
         IUIAutomationCondition pidCondition = null;
         IUIAutomationElementArray windows = null;
+        Process[] processes = Array.Empty<Process>();
 
         try
         {
-            Process[] processes = Process.GetProcessesByName("cloudmusic");
+            processes = Process.GetProcessesByName("cloudmusic");
             if (processes.Length == 0)
             {
                 return null;
@@ -320,7 +332,6 @@ public static class NeteaseMusicHelper
             foreach (Process proc in processes)
             {
                 int pid = proc.Id;
-                proc.Dispose();
 
                 if (result != null)
                 {
@@ -373,6 +384,7 @@ public static class NeteaseMusicHelper
         }
         finally
         {
+            foreach (var process in processes) process.Dispose();
             ReleaseComObject(windows);
             ReleaseComObject(pidCondition);
             ReleaseComObject(desktop);

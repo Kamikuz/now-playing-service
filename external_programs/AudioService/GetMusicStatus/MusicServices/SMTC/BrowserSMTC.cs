@@ -28,6 +28,7 @@ public class BrowserSMTC : MusicService
     public override void Init()
     {
         mediaManager = new MediaManager();
+        OwnCleanup(() => mediaManager.Dispose());
         mediaManager.Start();
     }
 

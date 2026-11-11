@@ -20,6 +20,9 @@ public class SettingsGeneral {
     // 音乐平台
     private String platform = "netease";
 
+    // Lilith 点歌机本地 WebSocket 地址
+    private String lilithWsUrl = "ws://127.0.0.1:18988/now-playing";
+
     // 启动时自动打开主页
     private Boolean autoLaunchHomePage = true;
 

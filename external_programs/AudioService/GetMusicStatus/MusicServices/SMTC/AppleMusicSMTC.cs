@@ -18,6 +18,11 @@ public class AppleMusicSMTC : MusicService
         mediaManager.OnAnySessionOpened += MediaManager_OnAnySessionOpened;
         mediaManager.OnAnySessionClosed += MediaManager_OnAnySessionClosed;
 
+        OwnCleanup(() => {
+            mediaManager.OnAnySessionOpened -= MediaManager_OnAnySessionOpened;
+            mediaManager.OnAnySessionClosed -= MediaManager_OnAnySessionClosed;
+            mediaManager.Dispose();
+        });
         mediaManager.Start();
     }
 

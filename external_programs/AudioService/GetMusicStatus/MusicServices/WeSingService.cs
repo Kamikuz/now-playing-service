@@ -18,6 +18,12 @@ public class WeSingService : MusicService
 
     private IUIAutomation _automation;
 
+    public override void Dispose()
+    {
+        try { base.Dispose(); }
+        finally { ReleaseComObject(_automation); _automation = null; }
+    }
+
     private const int UIA_ProcessIdPropertyId = 30002;
     private const int UIA_ControlTypePropertyId = 30003;
     private const int UIA_TextControlTypeId = 50020;
