@@ -133,6 +133,15 @@
             在音量为 0 的情况下用于兜底：若进度刚刚发生变化（1.5 秒内），仍认为在播放
             </summary>
         </member>
+        <member name="M:SpotifyMusicSMTC.GetProgress(Windows.Media.Control.GlobalSystemMediaTransportControlsSession,System.Boolean)">
+             <summary>
+             从 SMTC 时间轴读取 Spotify 的真实进度，返回 "Progress:当前秒数|总秒数"，读不到时返回 null。
+            
+             Spotify 在播放中约每 4.5 秒、以及拖动进度条、切歌、暂停时更新一次时间轴（Position + LastUpdatedTime），
+             两次更新之间按 LastUpdatedTime 往后推算。这样拖动进度条后 1 秒内就能把新进度交给服务端，
+             服务端据此校准计时器并推送进度同步（与网易云的 UI Automation 进度共用同一条通道）。
+             </summary>
+        </member>
         <member name="M:WeSingService.FindWeSingWindow">
             <summary>
             查找全民K歌播放窗口的 IUIAutomationElement（标题为 "全民K歌 - {歌曲名}" 的窗口）
