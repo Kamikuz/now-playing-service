@@ -48,6 +48,7 @@ class NowPlayingServiceLilithTest {
         ReflectionTestUtils.setField(service, "settingsService", settingsService);
         ReflectionTestUtils.setField(service, "neteaseMusicService", neteaseMusicService);
         ReflectionTestUtils.setField(service, "outputService", outputService);
+        ReflectionTestUtils.setField(service, "lyricService", mock(LyricService.class));
         ReflectionTestUtils.setField(service, "eventPublisher", eventPublisher);
     }
 
